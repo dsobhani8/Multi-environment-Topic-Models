@@ -1,17 +1,47 @@
+from typing import Optional, Tuple, Dict, Any
+import numpy as np
+import torch
+from sklearn.feature_extraction.text import CountVectorizer as CV  # Rename to be explicit
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+import nltk
+
+# preprocessor.py
+print("Starting imports...")
+
+import numpy as np
+print("numpy imported")
+
+import torch
+print("torch imported")
+
+try:
+    from sklearn.feature_extraction.text import CountVectorizer
+    print("CountVectorizer imported successfully")
+except Exception as e:
+    print(f"Error importing CountVectorizer: {str(e)}")
+
+from nltk.corpus import stopwords
+print("stopwords imported")
+
+from nltk.stem import WordNetLemmatizer
+print("WordNetLemmatizer imported")
+
+import nltk
+print("nltk imported")
+
+# Rest of your code...
+
+class LemmaTokenizer:
+    def __init__(self):
+        self.wnl = WordNetLemmatizer()
+    def __call__(self, doc):
+        return [self.wnl.lemmatize(t) for t in nltk.word_tokenize(doc)]
+
+
 class TextPreprocessor:
     def __init__(self, tokenizer=None, stop_words=None, max_df=0.4, min_df=0.0006, 
                  ngram_range=(1, 1), has_environments=True):
-        """
-        Initialize the text preprocessor.
-        
-        Args:
-            tokenizer: Custom tokenizer (default: LemmaTokenizer)
-            stop_words: List of stop words
-            max_df: Maximum document frequency for vectorizer
-            min_df: Minimum document frequency for vectorizer
-            ngram_range: Tuple for ngram range in vectorizer
-            has_environments: Boolean indicating if environment data exists
-        """
         self.tokenizer = tokenizer if tokenizer else LemmaTokenizer()
         self.stop_words = stop_words if stop_words else all_stopwords
         self.max_df = max_df
@@ -23,7 +53,7 @@ class TextPreprocessor:
         
     def _create_vectorizer(self):
         """Create and return a CountVectorizer with specified parameters."""
-        return CountVectorizer(
+        return CV(  # Use CV instead of CountVectorizer
             tokenizer=self.tokenizer,
             ngram_range=self.ngram_range,
             stop_words=self.stop_words,
