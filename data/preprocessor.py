@@ -6,32 +6,6 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import nltk
 
-# preprocessor.py
-print("Starting imports...")
-
-import numpy as np
-print("numpy imported")
-
-import torch
-print("torch imported")
-
-try:
-    from sklearn.feature_extraction.text import CountVectorizer
-    print("CountVectorizer imported successfully")
-except Exception as e:
-    print(f"Error importing CountVectorizer: {str(e)}")
-
-from nltk.corpus import stopwords
-print("stopwords imported")
-
-from nltk.stem import WordNetLemmatizer
-print("WordNetLemmatizer imported")
-
-import nltk
-print("nltk imported")
-
-# Rest of your code...
-
 class LemmaTokenizer:
     def __init__(self):
         self.wnl = WordNetLemmatizer()
