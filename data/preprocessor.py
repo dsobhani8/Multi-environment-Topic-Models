@@ -1,23 +1,40 @@
-from typing import Optional, Tuple, Dict, Any
 import numpy as np
 import torch
-from sklearn.feature_extraction.text import CountVectorizer as CV  # Rename to be explicit
+from sklearn.feature_extraction.text import CountVectorizer
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import nltk
 
+# Download required NLTK data
+try:
+    nltk.download('punkt', quiet=True)
+    nltk.download('wordnet', quiet=True)
+    nltk.download('stopwords', quiet=True)
+except:
+    pass
+
+# Define LemmaTokenizer internally
 class LemmaTokenizer:
     def __init__(self):
         self.wnl = WordNetLemmatizer()
     def __call__(self, doc):
         return [self.wnl.lemmatize(t) for t in nltk.word_tokenize(doc)]
 
-
 class TextPreprocessor:
-    def __init__(self, tokenizer=None, stop_words=None, max_df=0.4, min_df=0.0006, 
+    def __init__(self, stop_words=None, max_df=0.4, min_df=0.0006,  
                  ngram_range=(1, 1), has_environments=True):
-        self.tokenizer = tokenizer if tokenizer else LemmaTokenizer()
-        self.stop_words = stop_words if stop_words else all_stopwords
+        """
+        Initialize the text preprocessor.
+        
+        Args:
+            stop_words: List of stop words (if None, uses NLTK English stopwords)
+            max_df: Maximum document frequency for vectorizer
+            min_df: Minimum document frequency for vectorizer
+            ngram_range: Tuple for ngram range in vectorizer
+            has_environments: Boolean indicating if environment data exists
+        """
+        self.tokenizer = LemmaTokenizer()  # Use internal LemmaTokenizer
+        self.stop_words = stop_words
         self.max_df = max_df
         self.min_df = min_df
         self.ngram_range = ngram_range
