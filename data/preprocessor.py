@@ -1,3 +1,23 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Preprocessor Module
+
+This script processes text data for machine learning tasks, including tokenization, 
+lemmatization, and environment-specific indexing. It supports training and testing 
+data preprocessing with configurable parameters.
+
+Usage:
+    Set environment variables for data paths:
+    - TRAIN_DATA_PATH: Path to training data
+    - TEST_DATA_PATH: Path to test data (optional)
+
+Run the script:
+    python preprocessor.py
+"""
+import os
+import pandas as pd
 import numpy as np
 import torch
 from sklearn.feature_extraction.text import CountVectorizer
@@ -13,7 +33,6 @@ try:
 except:
     pass
 
-# Define LemmaTokenizer internally
 class LemmaTokenizer:
     def __init__(self):
         self.wnl = WordNetLemmatizer()
@@ -23,17 +42,7 @@ class LemmaTokenizer:
 class TextPreprocessor:
     def __init__(self, stop_words=None, max_df=0.4, min_df=0.0006,  
                  ngram_range=(1, 1), has_environments=True):
-        """
-        Initialize the text preprocessor.
-        
-        Args:
-            stop_words: List of stop words (if None, uses NLTK English stopwords)
-            max_df: Maximum document frequency for vectorizer
-            min_df: Minimum document frequency for vectorizer
-            ngram_range: Tuple for ngram range in vectorizer
-            has_environments: Boolean indicating if environment data exists
-        """
-        self.tokenizer = LemmaTokenizer()  # Use internal LemmaTokenizer
+        self.tokenizer = LemmaTokenizer()
         self.stop_words = stop_words
         self.max_df = max_df
         self.min_df = min_df
@@ -43,8 +52,7 @@ class TextPreprocessor:
         self.env_mapping = None
         
     def _create_vectorizer(self):
-        """Create and return a CountVectorizer with specified parameters."""
-        return CV(  # Use CV instead of CountVectorizer
+        return CountVectorizer(
             tokenizer=self.tokenizer,
             ngram_range=self.ngram_range,
             stop_words=self.stop_words,
@@ -53,29 +61,17 @@ class TextPreprocessor:
         )
     
     def _process_environments(self, data):
-        """
-        Process environment data and create environment index tensor.
-        
-        Args:
-            data: Pandas DataFrame containing the data
-            
-        Returns:
-            torch.Tensor: Environment index tensor
-        """
         if not self.has_environments:
             return None
             
-        # Create environment mapping if it doesn't exist
         if self.env_mapping is None:
             self.env_mapping = {value: index for index, value 
                               in enumerate(data['source'].unique())}
             
-        # Create environment index matrix
         num_docs = len(data)
         num_envs = len(self.env_mapping)
         env_index_matrix = np.zeros((num_docs, num_envs), dtype=int)
         
-        # Fill environment matrix
         for doc_idx, source in enumerate(data['source']):
             env_idx = self.env_mapping[source]
             env_index_matrix[doc_idx, env_idx] = 1
@@ -83,40 +79,24 @@ class TextPreprocessor:
         return torch.from_numpy(env_index_matrix).float()
     
     def prepare_for_training(self, train_data, test_data=None, device='cuda'):
-        """
-        Process data and return everything needed for model training.
-        
-        Args:
-            train_data: DataFrame containing training data
-            test_data: Optional DataFrame containing test data
-            device: Device to place tensors on
-            
-        Returns:
-            dict: All components needed for model training
-        """
-        # Initialize vectorizer if not already done
         if self.vectorizer is None:
             self.vectorizer = self._create_vectorizer()
             
-        # Process text data
         docs_word_matrix_raw = self.vectorizer.fit_transform(train_data['text'])
         docs_word_matrix_tensor = torch.from_numpy(docs_word_matrix_raw.toarray()).float().to(device)
         
-        # Process environment data if it exists
         env_index_tensor = None
-        num_envs = 1  # default for no environments
+        num_envs = 1
         if self.has_environments:
             env_index_tensor = self._process_environments(train_data)
             env_index_tensor = env_index_tensor.to(device)
             num_envs = len(self.env_mapping)
         
-        # Process test data if provided
         test_tensor = None
         if test_data is not None:
             test_matrix_raw = self.vectorizer.transform(test_data['text'])
             test_tensor = torch.from_numpy(test_matrix_raw.toarray()).float().to(device)
         
-        # Get vocabulary size
         vocab_size = len(self.vectorizer.get_feature_names_out())
         
         return {
@@ -132,3 +112,33 @@ class TextPreprocessor:
             'vectorizer': self.vectorizer,
             'env_mapping': self.env_mapping
         }
+
+def main():
+    # Get paths for training and testing data
+    train_data_path = os.getenv('TRAIN_DATA_PATH')
+    test_data_path = os.getenv('TEST_DATA_PATH')
+    
+    if not train_data_path:
+        raise ValueError("Please set the TRAIN_DATA_PATH environment variable to the training data location.")
+    if not test_data_path:
+        print("TEST_DATA_PATH environment variable not set. Only training data will be processed.")
+    
+    # Load datasets
+    train_data = pd.read_csv(train_data_path)
+    test_data = pd.read_csv(test_data_path) if test_data_path else None
+
+    # Initialize the preprocessor
+    preprocessor = TextPreprocessor(stop_words=stopwords.words('english'), has_environments=True)
+    
+    # Prepare data for training
+    prepared_data = preprocessor.prepare_for_training(train_data, test_data, device='cpu')
+    
+    # Print the output for verification
+    print("Training Data Processed:")
+    print(prepared_data['training'])
+    if test_data_path:
+        print("Test Data Processed:")
+        print(prepared_data['test'])
+
+if __name__ == "__main__":
+    main()
