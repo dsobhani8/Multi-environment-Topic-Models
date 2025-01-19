@@ -24,6 +24,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import nltk
+import argparse
 
 # Download required NLTK data
 try:
@@ -113,13 +114,46 @@ class TextPreprocessor:
             'env_mapping': self.env_mapping
         }
 
+def load_political_stopwords(file_path):
+    """
+    Load additional stopwords from a file and merge them with NLTK stopwords.
+    
+    Args:
+        file_path: Path to the file containing additional stopwords.
+    
+    Returns:
+        list: Combined list of stopwords.
+    """
+    nltk_stopwords = set(stopwords.words('english'))
+    try:
+        with open(file_path, 'r') as f:
+            additional_stopwords = set(line.strip() for line in f if line.strip())
+    except FileNotFoundError:
+        raise ValueError(f"Stopwords file not found: {file_path}")
+    
+    # Combine stopwords and convert to a list
+    return list(nltk_stopwords.union(additional_stopwords))
+
+
 def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Run the Preprocessor for text data.")
+    parser.add_argument('--min_df', type=float, default=0.0006, help="Minimum document frequency (default: 0.0006)")
+    parser.add_argument('--max_df', type=float, default=0.4, help="Maximum document frequency (default: 0.4)")
+    args = parser.parse_args()
+    
+    # Get the current script directory to construct relative paths
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    stopwords_file_path = os.path.join(script_dir, 'political_stopwords.txt')  # Relative path to the stopwords file
+    
     # Get paths for training and testing data
     train_data_path = os.getenv('TRAIN_DATA_PATH')
     test_data_path = os.getenv('TEST_DATA_PATH')
     
     if not train_data_path:
         raise ValueError("Please set the TRAIN_DATA_PATH environment variable to the training data location.")
+    if not os.path.exists(stopwords_file_path):
+        raise ValueError(f"Stopwords file not found: {stopwords_file_path}")
     if not test_data_path:
         print("TEST_DATA_PATH environment variable not set. Only training data will be processed.")
     
@@ -127,8 +161,16 @@ def main():
     train_data = pd.read_csv(train_data_path)
     test_data = pd.read_csv(test_data_path) if test_data_path else None
 
-    # Initialize the preprocessor
-    preprocessor = TextPreprocessor(stop_words=stopwords.words('english'), has_environments=True)
+    # Load stopwords
+    combined_stopwords = load_political_stopwords(stopwords_file_path)
+
+    # Initialize the preprocessor with dynamic arguments
+    preprocessor = TextPreprocessor(
+        stop_words=combined_stopwords,
+        max_df=args.max_df,
+        min_df=args.min_df,
+        has_environments=True
+    )
     
     # Prepare data for training
     prepared_data = preprocessor.prepare_for_training(train_data, test_data, device='cpu')
