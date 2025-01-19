@@ -14,7 +14,7 @@ Usage:
     - TEST_DATA_PATH: Path to test data (optional)
 
 Run the script:
-    python preprocessor.py
+    python preprocessor.py [--filename <file_prefix>]
 """
 import os
 import pandas as pd
@@ -79,7 +79,15 @@ class TextPreprocessor:
             
         return torch.from_numpy(env_index_matrix).float()
     
-    def prepare_for_training(self, train_data, test_data=None, device='cuda'):
+    def prepare_for_training(self, train_data, test_data=None, device='cpu', output_dir=None, filename="mtm"):
+        if not output_dir:
+            # Set default output directory: repo/data/preprocessed_data/<filename>
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            output_dir = os.path.join(repo_root, 'data', 'preprocessed_data', filename)
+        
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
         if self.vectorizer is None:
             self.vectorizer = self._create_vectorizer()
             
@@ -87,32 +95,24 @@ class TextPreprocessor:
         docs_word_matrix_tensor = torch.from_numpy(docs_word_matrix_raw.toarray()).float().to(device)
         
         env_index_tensor = None
-        num_envs = 1
         if self.has_environments:
             env_index_tensor = self._process_environments(train_data)
             env_index_tensor = env_index_tensor.to(device)
-            num_envs = len(self.env_mapping)
         
-        test_tensor = None
+        # Save the preprocessed data
+        train_file = f"{filename}_train.pt"
+        env_file = f"{filename}_env.pt"
+        torch.save(docs_word_matrix_tensor, os.path.join(output_dir, train_file))
+        if env_index_tensor is not None:
+            torch.save(env_index_tensor, os.path.join(output_dir, env_file))
+        
         if test_data is not None:
             test_matrix_raw = self.vectorizer.transform(test_data['text'])
             test_tensor = torch.from_numpy(test_matrix_raw.toarray()).float().to(device)
+            test_file = f"{filename}_test.pt"
+            torch.save(test_tensor, os.path.join(output_dir, test_file))
         
-        vocab_size = len(self.vectorizer.get_feature_names_out())
-        
-        return {
-            'training': {
-                'docs_word_matrix_tensor': docs_word_matrix_tensor,
-                'env_index_tensor': env_index_tensor,
-                'num_envs': num_envs,
-                'vocab_size': vocab_size
-            },
-            'test': {
-                'tensor': test_tensor
-            } if test_data is not None else None,
-            'vectorizer': self.vectorizer,
-            'env_mapping': self.env_mapping
-        }
+        print(f"Preprocessed files saved in '{output_dir}' with prefix '{filename}'.")
 
 def load_political_stopwords(file_path):
     """
@@ -131,22 +131,19 @@ def load_political_stopwords(file_path):
     except FileNotFoundError:
         raise ValueError(f"Stopwords file not found: {file_path}")
     
-    # Combine stopwords and convert to a list
     return list(nltk_stopwords.union(additional_stopwords))
 
 
 def main():
-    # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Run the Preprocessor for text data.")
     parser.add_argument('--min_df', type=float, default=0.0006, help="Minimum document frequency (default: 0.0006)")
     parser.add_argument('--max_df', type=float, default=0.4, help="Maximum document frequency (default: 0.4)")
+    parser.add_argument('--filename', type=str, default="mtm", help="Filename prefix for output files (default: 'mtm').")
     args = parser.parse_args()
     
-    # Get the current script directory to construct relative paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    stopwords_file_path = os.path.join(script_dir, 'political_stopwords.txt')  # Relative path to the stopwords file
+    stopwords_file_path = os.path.join(script_dir, 'political_stopwords.txt') 
     
-    # Get paths for training and testing data
     train_data_path = os.getenv('TRAIN_DATA_PATH')
     test_data_path = os.getenv('TEST_DATA_PATH')
     
@@ -154,17 +151,12 @@ def main():
         raise ValueError("Please set the TRAIN_DATA_PATH environment variable to the training data location.")
     if not os.path.exists(stopwords_file_path):
         raise ValueError(f"Stopwords file not found: {stopwords_file_path}")
-    if not test_data_path:
-        print("TEST_DATA_PATH environment variable not set. Only training data will be processed.")
     
-    # Load datasets
     train_data = pd.read_csv(train_data_path)
     test_data = pd.read_csv(test_data_path) if test_data_path else None
 
-    # Load stopwords
     combined_stopwords = load_political_stopwords(stopwords_file_path)
 
-    # Initialize the preprocessor with dynamic arguments
     preprocessor = TextPreprocessor(
         stop_words=combined_stopwords,
         max_df=args.max_df,
@@ -172,15 +164,12 @@ def main():
         has_environments=True
     )
     
-    # Prepare data for training
-    prepared_data = preprocessor.prepare_for_training(train_data, test_data, device='cpu')
-    
-    # Print the output for verification
-    print("Training Data Processed:")
-    print(prepared_data['training'])
-    if test_data_path:
-        print("Test Data Processed:")
-        print(prepared_data['test'])
+    preprocessor.prepare_for_training(
+        train_data,
+        test_data,
+        device='cpu',
+        filename=args.filename
+    )
 
 if __name__ == "__main__":
     main()
