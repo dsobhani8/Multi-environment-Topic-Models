@@ -23,6 +23,8 @@ import torch
 from sklearn.feature_extraction.text import CountVectorizer
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
+import scipy.sparse
+from numpy import savez_compressed, load
 import nltk
 import argparse
 
@@ -92,25 +94,32 @@ class TextPreprocessor:
             self.vectorizer = self._create_vectorizer()
             
         docs_word_matrix_raw = self.vectorizer.fit_transform(train_data['text'])
-        docs_word_matrix_tensor = torch.from_numpy(docs_word_matrix_raw.toarray()).float().to(device)
-        
+        docs_word_matrix_sparse = scipy.sparse.csr_matrix(docs_word_matrix_raw)
+
         env_index_tensor = None
         if self.has_environments:
             env_index_tensor = self._process_environments(train_data)
-            env_index_tensor = env_index_tensor.to(device)
+            env_index_tensor = env_index_tensor.cpu().numpy()  # Convert to NumPy array for saving
+            
+        # Save the preprocessed data in compressed .npz format
+        savez_compressed(os.path.join(output_dir, f"{filename}_train.npz"),
+                         data=docs_word_matrix_sparse.data,
+                         indices=docs_word_matrix_sparse.indices,
+                         indptr=docs_word_matrix_sparse.indptr,
+                         shape=docs_word_matrix_sparse.shape)
         
-        # Save the preprocessed data
-        train_file = f"{filename}_train.pt"
-        env_file = f"{filename}_env.pt"
-        torch.save(docs_word_matrix_tensor, os.path.join(output_dir, train_file))
         if env_index_tensor is not None:
-            torch.save(env_index_tensor, os.path.join(output_dir, env_file))
+            savez_compressed(os.path.join(output_dir, f"{filename}_env.npz"),
+                             data=env_index_tensor)
         
         if test_data is not None:
             test_matrix_raw = self.vectorizer.transform(test_data['text'])
-            test_tensor = torch.from_numpy(test_matrix_raw.toarray()).float().to(device)
-            test_file = f"{filename}_test.pt"
-            torch.save(test_tensor, os.path.join(output_dir, test_file))
+            test_matrix_sparse = scipy.sparse.csr_matrix(test_matrix_raw)
+            savez_compressed(os.path.join(output_dir, f"{filename}_test.npz"),
+                             data=test_matrix_sparse.data,
+                             indices=test_matrix_sparse.indices,
+                             indptr=test_matrix_sparse.indptr,
+                             shape=test_matrix_sparse.shape)
         
         print(f"Preprocessed files saved in '{output_dir}' with prefix '{filename}'.")
 
