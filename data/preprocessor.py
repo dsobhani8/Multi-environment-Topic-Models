@@ -80,7 +80,7 @@ class TextPreprocessor:
             env_index_matrix[doc_idx, env_idx] = 1
             
         return torch.from_numpy(env_index_matrix).float()
-    
+
     def prepare_for_training(self, train_data, test_data=None, device='cpu', output_dir=None, filename="mtm"):
         if not output_dir:
             # Set default output directory: repo/data/preprocessed_data/<filename>
@@ -93,8 +93,15 @@ class TextPreprocessor:
         if self.vectorizer is None:
             self.vectorizer = self._create_vectorizer()
             
+        # Fit the vectorizer to the training data
         docs_word_matrix_raw = self.vectorizer.fit_transform(train_data['text'])
         docs_word_matrix_sparse = scipy.sparse.csr_matrix(docs_word_matrix_raw)
+
+        # Save the vocabulary
+        vocabulary = self.vectorizer.get_feature_names_out()
+        vocab_path = os.path.join(output_dir, f"{filename}_vocab.npy")
+        np.save(vocab_path, vocabulary)
+        print(f"Vocabulary saved to '{vocab_path}'.")
 
         env_index_tensor = None
         if self.has_environments:
@@ -102,26 +109,31 @@ class TextPreprocessor:
             env_index_tensor = env_index_tensor.cpu().numpy()  # Convert to NumPy array for saving
             
         # Save the preprocessed data in compressed .npz format
-        savez_compressed(os.path.join(output_dir, f"{filename}_train.npz"),
-                         data=docs_word_matrix_sparse.data,
-                         indices=docs_word_matrix_sparse.indices,
-                         indptr=docs_word_matrix_sparse.indptr,
-                         shape=docs_word_matrix_sparse.shape)
-        
+        train_data_path = os.path.join(output_dir, f"{filename}_train.npz")
+        savez_compressed(train_data_path,
+                        data=docs_word_matrix_sparse.data,
+                        indices=docs_word_matrix_sparse.indices,
+                        indptr=docs_word_matrix_sparse.indptr,
+                        shape=docs_word_matrix_sparse.shape)
+        print(f"Training data saved to '{train_data_path}'.")
+
         if env_index_tensor is not None:
-            savez_compressed(os.path.join(output_dir, f"{filename}_env.npz"),
-                             data=env_index_tensor)
+            env_data_path = os.path.join(output_dir, f"{filename}_env.npz")
+            savez_compressed(env_data_path, data=env_index_tensor)
+            print(f"Environment index saved to '{env_data_path}'.")
         
         if test_data is not None:
             test_matrix_raw = self.vectorizer.transform(test_data['text'])
             test_matrix_sparse = scipy.sparse.csr_matrix(test_matrix_raw)
-            savez_compressed(os.path.join(output_dir, f"{filename}_test.npz"),
-                             data=test_matrix_sparse.data,
-                             indices=test_matrix_sparse.indices,
-                             indptr=test_matrix_sparse.indptr,
-                             shape=test_matrix_sparse.shape)
-        
-        print(f"Preprocessed files saved in '{output_dir}' with prefix '{filename}'.")
+            test_data_path = os.path.join(output_dir, f"{filename}_test.npz")
+            savez_compressed(test_data_path,
+                            data=test_matrix_sparse.data,
+                            indices=test_matrix_sparse.indices,
+                            indptr=test_matrix_sparse.indptr,
+                            shape=test_matrix_sparse.shape)
+            print(f"Test data saved to '{test_data_path}'.")
+
+        print(f"All preprocessed files saved in '{output_dir}' with prefix '{filename}'.")
 
 def load_political_stopwords(file_path):
     """
