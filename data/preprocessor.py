@@ -17,6 +17,7 @@ Run the script:
     python preprocessor.py [--filename <file_prefix>]
 """
 import os
+import re
 import pandas as pd
 import numpy as np
 import torch
@@ -39,7 +40,10 @@ except:
 class LemmaTokenizer:
     def __init__(self):
         self.wnl = WordNetLemmatizer()
+    
     def __call__(self, doc):
+        # Remove punctuation using regex
+        doc = re.sub(r'[^\w\s]', '', doc)
         return [self.wnl.lemmatize(t) for t in nltk.word_tokenize(doc)]
 
 class TextPreprocessor:
@@ -108,7 +112,7 @@ class TextPreprocessor:
             env_index_tensor = self._process_environments(train_data)
             env_index_tensor = env_index_tensor.cpu().numpy()  # Convert to NumPy array for saving
             
-        # Save the preprocessed data in compressed .npz format
+        # Save the preprocessed training data in compressed .npz format
         train_data_path = os.path.join(output_dir, f"{filename}_train.npz")
         savez_compressed(train_data_path,
                         data=docs_word_matrix_sparse.data,
@@ -123,17 +127,26 @@ class TextPreprocessor:
             print(f"Environment index saved to '{env_data_path}'.")
         
         if test_data is not None:
-            test_matrix_raw = self.vectorizer.transform(test_data['text'])
-            test_matrix_sparse = scipy.sparse.csr_matrix(test_matrix_raw)
-            test_data_path = os.path.join(output_dir, f"{filename}_test.npz")
-            savez_compressed(test_data_path,
-                            data=test_matrix_sparse.data,
-                            indices=test_matrix_sparse.indices,
-                            indptr=test_matrix_sparse.indptr,
-                            shape=test_matrix_sparse.shape)
-            print(f"Test data saved to '{test_data_path}'.")
+            unique_envs = test_data['source'].unique()
+            for env in unique_envs:
+                # Filter test data by environment
+                env_data = test_data[test_data['source'] == env]
+                
+                # Transform text for the current environment
+                test_matrix_raw = self.vectorizer.transform(env_data['text'])
+                test_matrix_sparse = scipy.sparse.csr_matrix(test_matrix_raw)
+                
+                # Save the environment-specific test data
+                test_data_path = os.path.join(output_dir, f"{filename}_test_{env}.npz")
+                savez_compressed(test_data_path,
+                                data=test_matrix_sparse.data,
+                                indices=test_matrix_sparse.indices,
+                                indptr=test_matrix_sparse.indptr,
+                                shape=test_matrix_sparse.shape)
+                print(f"Test data for environment '{env}' saved to '{test_data_path}'.")
 
         print(f"All preprocessed files saved in '{output_dir}' with prefix '{filename}'.")
+
 
 def load_political_stopwords(file_path):
     """
